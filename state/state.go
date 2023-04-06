@@ -441,7 +441,7 @@ func (s *State) ProcessSequencerBatch(ctx context.Context, batchNumber uint64, b
 	}
 
 	txs, _, err := DecodeTxs(batchL2Data)
-	if err != nil && !errors.Is(err, InvalidData) {
+	if err != nil && !errors.Is(err, ErrInvalidData) {
 		return nil, err
 	}
 	result, err := s.convertToProcessBatchResponse(txs, processBatchResponse)
@@ -483,7 +483,7 @@ func (s *State) ProcessBatch(ctx context.Context, request ProcessRequest, update
 	}
 
 	txs, _, err := DecodeTxs(request.Transactions)
-	if err != nil && !errors.Is(err, InvalidData) {
+	if err != nil && !errors.Is(err, ErrInvalidData) {
 		return nil, err
 	}
 
@@ -769,7 +769,7 @@ func (s *State) ProcessAndStoreClosedBatch(
 ) (common.Hash, error) {
 	// Decode transactions
 	decodedTransactions, _, err := DecodeTxs(encodedTxs)
-	if err != nil && !errors.Is(err, InvalidData) {
+	if err != nil && !errors.Is(err, ErrInvalidData) {
 		log.Debugf("error decoding transactions: %v", err)
 		return common.Hash{}, err
 	}
@@ -957,7 +957,7 @@ func (s *State) DebugTransaction(ctx context.Context, transactionHash common.Has
 	// }
 
 	txs, _, err := DecodeTxs(batchL2Data)
-	if err != nil && !errors.Is(err, InvalidData) {
+	if err != nil && !errors.Is(err, ErrInvalidData) {
 		return nil, err
 	}
 
@@ -1334,7 +1334,7 @@ func (s *State) SetGenesis(ctx context.Context, block Block, genesis Genesis, db
 		return newRoot, ErrDBTxNil
 	}
 
-	for _, action := range genesis.Actions {
+	for _, action := range genesis.GenesisActions {
 		address := common.HexToAddress(action.Address)
 		switch action.Type {
 		case int(merkletree.LeafTypeBalance):
