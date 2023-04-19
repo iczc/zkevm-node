@@ -128,7 +128,7 @@ type externalGasProviders struct {
 // Client is a simple implementation of EtherMan.
 type Client struct {
 	EthClient             ethereumClient
-	PoE                   *polygonzkevm.Polygonzkevm
+	ZkEVM                 *polygonzkevm.Polygonzkevm
 	GlobalExitRootManager *polygonzkevmglobalexitroot.Polygonzkevmglobalexitroot
 	Matic                 *matic.Matic
 	SCAddresses           []common.Address
@@ -176,7 +176,7 @@ func NewClient(cfg Config, l1Config L1Config) (*Client, error) {
 
 	return &Client{
 		EthClient:             ethClient,
-		PoE:                   poe,
+		ZkEVM:                 poe,
 		Matic:                 matic,
 		GlobalExitRootManager: globalExitRoot,
 		SCAddresses:           scAddresses,
@@ -232,7 +232,7 @@ func (etherMan *Client) GetForks(ctx context.Context) ([]state.ForkIDInterval, e
 	}
 	var forks []state.ForkIDInterval
 	for i, l := range logs {
-		zkevmVersion, err := etherMan.PoE.ParseUpdateZkEVMVersion(l)
+		zkevmVersion, err := etherMan.ZkEVM.ParseUpdateZkEVMVersion(l)
 		if err != nil {
 			return []state.ForkIDInterval{}, err
 		}
@@ -387,7 +387,7 @@ func (etherMan *Client) processEvent(ctx context.Context, vLog types.Log, blocks
 
 func (etherMan *Client) updateZkevmVersion(ctx context.Context, vLog types.Log, blocks *[]Block, blocksOrder *map[common.Hash][]Order) error {
 	log.Debug("UpdateZkEVMVersion event detected")
-	zkevmVersion, err := etherMan.PoE.ParseUpdateZkEVMVersion(vLog)
+	zkevmVersion, err := etherMan.ZkEVM.ParseUpdateZkEVMVersion(vLog)
 	if err != nil {
 		log.Error("error parsing UpdateZkEVMVersion event. Error: ", err)
 		return err
@@ -516,7 +516,7 @@ func (etherMan *Client) sequenceBatches(opts bind.TransactOpts, sequences []ethm
 		batches = append(batches, batch)
 	}
 
-	tx, err := etherMan.PoE.SequenceBatches(&opts, batches, opts.From)
+	tx, err := etherMan.ZkEVM.SequenceBatches(&opts, batches, opts.From)
 	if err != nil {
 		if parsedErr, ok := tryParseError(err); ok {
 			err = parsedErr
@@ -551,7 +551,7 @@ func (etherMan *Client) BuildTrustedVerifyBatchesTxData(lastVerifiedBatch, newVe
 
 	const pendStateNum = 0 // TODO hardcoded for now until we implement the pending state feature
 
-	tx, err := etherMan.PoE.VerifyBatchesTrustedAggregator(
+	tx, err := etherMan.ZkEVM.VerifyBatchesTrustedAggregator(
 		&opts,
 		pendStateNum,
 		lastVerifiedBatch,
@@ -572,7 +572,7 @@ func (etherMan *Client) BuildTrustedVerifyBatchesTxData(lastVerifiedBatch, newVe
 
 // GetSendSequenceFee get super/trusted sequencer fee
 func (etherMan *Client) GetSendSequenceFee(numBatches uint64) (*big.Int, error) {
-	f, err := etherMan.PoE.BatchFee(&bind.CallOpts{Pending: false})
+	f, err := etherMan.ZkEVM.BatchFee(&bind.CallOpts{Pending: false})
 	if err != nil {
 		return nil, err
 	}
@@ -582,12 +582,12 @@ func (etherMan *Client) GetSendSequenceFee(numBatches uint64) (*big.Int, error) 
 
 // TrustedSequencer gets trusted sequencer address
 func (etherMan *Client) TrustedSequencer() (common.Address, error) {
-	return etherMan.PoE.TrustedSequencer(&bind.CallOpts{Pending: false})
+	return etherMan.ZkEVM.TrustedSequencer(&bind.CallOpts{Pending: false})
 }
 
 func (etherMan *Client) forcedBatchEvent(ctx context.Context, vLog types.Log, blocks *[]Block, blocksOrder *map[common.Hash][]Order) error {
 	log.Debug("ForceBatch event detected")
-	fb, err := etherMan.PoE.ParseForceBatch(vLog)
+	fb, err := etherMan.ZkEVM.ParseForceBatch(vLog)
 	if err != nil {
 		return err
 	}
@@ -658,7 +658,7 @@ func (etherMan *Client) forcedBatchEvent(ctx context.Context, vLog types.Log, bl
 
 func (etherMan *Client) sequencedBatchesEvent(ctx context.Context, vLog types.Log, blocks *[]Block, blocksOrder *map[common.Hash][]Order) error {
 	log.Debug("SequenceBatches event detected")
-	sb, err := etherMan.PoE.ParseSequenceBatches(vLog)
+	sb, err := etherMan.ZkEVM.ParseSequenceBatches(vLog)
 	if err != nil {
 		return err
 	}
@@ -747,7 +747,7 @@ func decodeSequences(txData []byte, lastBatchNumber uint64, sequencer common.Add
 
 func (etherMan *Client) verifyBatchesTrustedAggregatorEvent(ctx context.Context, vLog types.Log, blocks *[]Block, blocksOrder *map[common.Hash][]Order) error {
 	log.Debug("TrustedVerifyBatches event detected")
-	vb, err := etherMan.PoE.ParseVerifyBatchesTrustedAggregator(vLog)
+	vb, err := etherMan.ZkEVM.ParseVerifyBatchesTrustedAggregator(vLog)
 	if err != nil {
 		return err
 	}
@@ -782,7 +782,7 @@ func (etherMan *Client) verifyBatchesTrustedAggregatorEvent(ctx context.Context,
 
 func (etherMan *Client) forceSequencedBatchesEvent(ctx context.Context, vLog types.Log, blocks *[]Block, blocksOrder *map[common.Hash][]Order) error {
 	log.Debug("SequenceForceBatches event detect")
-	fsb, err := etherMan.PoE.ParseSequenceForceBatches(vLog)
+	fsb, err := etherMan.ZkEVM.ParseSequenceForceBatches(vLog)
 	if err != nil {
 		return err
 	}
@@ -910,12 +910,12 @@ func (etherMan *Client) EthBlockByNumber(ctx context.Context, blockNumber uint64
 
 // GetLastBatchTimestamp function allows to retrieve the lastTimestamp value in the smc
 func (etherMan *Client) GetLastBatchTimestamp() (uint64, error) {
-	return etherMan.PoE.LastTimestamp(&bind.CallOpts{Pending: false})
+	return etherMan.ZkEVM.LastTimestamp(&bind.CallOpts{Pending: false})
 }
 
 // GetLatestBatchNumber function allows to retrieve the latest proposed batch in the smc
 func (etherMan *Client) GetLatestBatchNumber() (uint64, error) {
-	return etherMan.PoE.LastBatchSequenced(&bind.CallOpts{Pending: false})
+	return etherMan.ZkEVM.LastBatchSequenced(&bind.CallOpts{Pending: false})
 }
 
 // GetLatestBlockNumber gets the latest block number from the ethereum
@@ -938,7 +938,7 @@ func (etherMan *Client) GetLatestBlockTimestamp(ctx context.Context) (uint64, er
 
 // GetLatestVerifiedBatchNum gets latest verified batch from ethereum
 func (etherMan *Client) GetLatestVerifiedBatchNum() (uint64, error) {
-	return etherMan.PoE.LastVerifiedBatch(&bind.CallOpts{Pending: false})
+	return etherMan.ZkEVM.LastVerifiedBatch(&bind.CallOpts{Pending: false})
 }
 
 // GetTx function get ethereum tx
@@ -973,12 +973,12 @@ func (etherMan *Client) ApproveMatic(ctx context.Context, account common.Address
 
 // GetTrustedSequencerURL Gets the trusted sequencer url from rollup smc
 func (etherMan *Client) GetTrustedSequencerURL() (string, error) {
-	return etherMan.PoE.TrustedSequencerURL(&bind.CallOpts{Pending: false})
+	return etherMan.ZkEVM.TrustedSequencerURL(&bind.CallOpts{Pending: false})
 }
 
 // GetL2ChainID returns L2 Chain ID
 func (etherMan *Client) GetL2ChainID() (uint64, error) {
-	return etherMan.PoE.ChainID(&bind.CallOpts{Pending: false})
+	return etherMan.ZkEVM.ChainID(&bind.CallOpts{Pending: false})
 }
 
 // GetL2ForkID returns current L2 Fork ID
