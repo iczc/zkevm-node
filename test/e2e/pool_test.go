@@ -227,3 +227,43 @@ func Test_FreeClaimRejectedWhenReverted(t *testing.T) {
 	_, err = bridgeSC.ClaimAsset(auth, [32][32]byte{}, uint32(123456789), [32]byte{}, [32]byte{}, 69, common.Address{}, uint32(20), common.Address{}, big.NewInt(0), []byte{})
 	require.Equal(t, err.Error(), "free claim reverted")
 }
+
+func Test_AddRevertedClaimToFreezeUser(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
+	var err error
+	err = operations.Teardown()
+	require.NoError(t, err)
+
+	defer func() { require.NoError(t, operations.Teardown()) }()
+
+	ctx := context.Background()
+	opsCfg := operations.GetDefaultOperationsConfig()
+	opsMan, err := operations.NewManager(ctx, opsCfg)
+	require.NoError(t, err)
+	err = opsMan.Setup()
+	require.NoError(t, err)
+
+	client := operations.MustGetClient(operations.DefaultL2NetworkURL)
+	auth := operations.MustGetAuth(operations.DefaultSequencerPrivateKey, operations.DefaultL2ChainID)
+
+	bridgeAddr := common.HexToAddress("0xff0EE8ea08cEf5cb4322777F5CC3E8A584B8A4A0")
+	bridgeSC, err := bridge.NewPolygonzkevmbridge(bridgeAddr, client)
+	require.NoError(t, err)
+
+	auth.GasLimit = 53000
+	auth.GasPrice = big.NewInt(0)
+
+	_, err = bridgeSC.ClaimAsset(auth, [32][32]byte{}, uint32(123456789), [32]byte{}, [32]byte{}, 69, common.Address{}, uint32(20), common.Address{}, big.NewInt(0), []byte{})
+	require.Equal(t, err.Error(), "free claim reverted") // Pre-execute revert claim transaction cannot be added to the tx pool by design https://github.com/0xPolygonHermez/zkevm-node/blob/v0.0.6/pool/pool.go#L188
+
+	auth.GasPrice = big.NewInt(1)
+	_, err = bridgeSC.ClaimAsset(auth, [32][32]byte{}, uint32(123456789), [32]byte{}, [32]byte{}, 69, common.Address{}, uint32(20), common.Address{}, big.NewInt(0), []byte{})
+	require.NoError(t, err) // Malicious actors set non-zero gas price to bypass revert reject https://github.com/0xPolygonHermez/zkevm-node/blob/v0.0.6/pool/pool.go#L189
+
+	auth.GasPrice = big.NewInt(100) // Normal user would send a free claim, but in order not to construct a smt to send a not-revert transaction, a non-zero gas tx mock is used here
+	_, err = bridgeSC.ClaimAsset(auth, [32][32]byte{}, uint32(123456789), [32]byte{}, [32]byte{}, 69, common.Address{}, uint32(20), common.Address{}, big.NewInt(0), []byte{})
+	require.Equal(t, err.Error(), "deposit count already exists") // Freeze normal claim tx of other user https://github.com/0xPolygonHermez/zkevm-node/blob/v0.0.6/pool/pool.go#L202
+}
